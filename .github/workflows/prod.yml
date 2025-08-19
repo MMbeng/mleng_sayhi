@@ -1,0 +1,54 @@
+name: cd-prod
+on:
+  push:
+    branches: [prod]
+env:
+  IMAGE_REPO: ${{ secrets.DOCKER_IMAGE_REPO || format('{0}/sayhi', secrets.DOCKERHUB_USERNAME) }}
+  IMAGE_TAG: ${{ github.sha }}
+  IMAGE_FULL: ${{ secrets.DOCKER_IMAGE_REPO && format('{0}:{1}', secrets.DOCKER_IMAGE_REPO, github.sha) || format('{0}/sayhi:{1}', secrets.DOCKERHUB_USERNAME, github.sha) }}
+  IMAGE_LATEST: ${{ secrets.DOCKER_IMAGE_REPO && format('{0}:prod-latest', secrets.DOCKER_IMAGE_REPO) || format('{0}/sayhi:prod-latest', secrets.DOCKERHUB_USERNAME) }}
+jobs:
+  test-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: pip install pytest mypy pylint
+      - run: mypy app.py
+      - run: pylint app.py tests
+      - run: pytest -q
+
+  build-and-push:
+    needs: test-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          push: true
+          tags: ${{ env.IMAGE_FULL }},${{ env.IMAGE_LATEST }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DO_SSH_HOST }}
+          username: ${{ secrets.DO_SSH_USER }}
+          key: ${{ secrets.DO_SSH_KEY }}
+          port: ${{ secrets.DO_SSH_PORT || 22 }}
+          script: |
+            set -euo pipefail
+            sudo mkdir -p /opt/assignment_outputs
+            sudo chown -R $USER:$USER /opt/assignment_outputs
+            docker pull ${{ env.IMAGE_FULL }}
+            docker run --rm -v /opt/assignment_outputs:/app/data ${{ env.IMAGE_FULL }} | tee -a /opt/assignment_outputs/last_run.log
