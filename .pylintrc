@@ -1,0 +1,5 @@
+[MASTER]
+ignore=venv,.venv,headline_api
+
+[FORMAT]
+max-line-length=100
