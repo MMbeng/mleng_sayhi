@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import os
 
-USERNAME = "mustapha_mbengue"
+USERNAME = "moomoo12"
 
 def main() -> None:
     out_dir = Path(os.environ.get("OUT_DIR", "/app/data"))
